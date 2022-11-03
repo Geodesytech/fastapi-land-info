@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from fastapi import Depends, FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 import requests
 from requests.auth import HTTPBasicAuth
 from dotenv import load_dotenv
@@ -13,6 +14,34 @@ from starlette.responses import RedirectResponse, Response, JSONResponse
 from starlette.requests import Request
 
 load_dotenv()
+
+app = FastAPI(title="SAP Integration")
+
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Set workspace
+output_path= r"C:\Stuff\DR-AKSHAY\SAP-Integration\DB\GDB"
+gdb_filename = "land_info.gdb"
+gdb_path = "{}\\{}".format(output_path, gdb_filename)
+
+sapFC = "SAPInfo"
+ownerFC = "OwnerInfo"
+rnrFC = "RnRComponents"
+rnrPaymentFC = "OwnerPaymentHistory"
+govtFC = "GovtComponents"
+govtPaymentFC = "GovtPaymentHistory"
+fraFC = "FraComponents"
+fraPaymentFC = "FraPaymentHistory"
+land_table = {"pvt" : rnrPaymentFC, "govt": fraPaymentFC, "fra" : govtPaymentFC}
 
 users_db = {
     "adani_gisportal": {
@@ -25,6 +54,7 @@ users_db = {
     }
 }
 
+
 security = HTTPBasic()
 
 class User(BaseModel):
@@ -32,7 +62,6 @@ class User(BaseModel):
     email: str = None
     full_name: str = None
     disabled: bool = None
-
 
 class UserInDB(User):
     hashed_password: str
@@ -100,7 +129,6 @@ class InitRnR(BaseModel):
     init_tree_com_p_wbs: str
     init_interest_wbs: str
 
-
 class PayComponents(BaseModel):
     amount: float
     compn_type: str
@@ -161,24 +189,8 @@ class PaymentHistory(BaseModel):
     parcel_id: str
     owner_id: str
 
-app = FastAPI()
 
-origins = ["*"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# Set workspace
-output_path= r"C:\Stuff\DR-AKSHAY\SAP-Integration\DB\GDB"
-gdb_filename = "land_info.gdb"
-gdb_path = "{}\\{}".format(output_path, gdb_filename)
-arcpy.env.workspace = gdb_path
-
-@app.get("/")
+@app.get("/test")
 def read_root():
     return {"Hello": "World"}
 
@@ -188,11 +200,9 @@ def read_root():
 @app.post("/rnr/")
 async def get_rnr( parcel_id: ParcelId):
     print(parcel_id.parcel_id)
-    arcpy.env.workspace = gdb_path
     SQL = "parcel_id = '{}'".format(parcel_id.parcel_id)
     sapSQL = "project_id = '{}'".format(parcel_id.project_id)
     ownerList, sapList, rnrList, totalComp, totalComPaid = [], [], [], 0, 0
-    ownerFC, sapFC, rnrFC, paymentHistoryFC = "OwnerInfo", "SAPInfo", "RnRComponents", "OwnerPaymentHistory"
     paymentFields = [ "amount", "compn_type"]
     ownerFields = ["parcel_id", "owner_id", "owner_name", "percentage", "exception", "ex_fields"]
     sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","place_supply", "land_act" ]
@@ -271,7 +281,7 @@ async def get_rnr( parcel_id: ParcelId):
                 "interest_wbs": row[28]
             })
         del rnrCursor
-    with arcpy.da.SearchCursor(paymentHistoryFC, paymentFields, SQL) as cursor:
+    with arcpy.da.SearchCursor(rnrPaymentFC, paymentFields, SQL) as cursor:
         for row in cursor:
             totalComPaid += row[0]
     return {"ownerList": ownerList, "sapList": sapList, "rnrList": rnrList, "totalComp":totalComp, "totalComPaid": totalComPaid}
@@ -296,14 +306,30 @@ def send_request_sap(sap_attrib):
         print('Login Successfully: '+ response.text)
     return response.text
 
+
+def verify_password(plain_password, hashed_password):
+    # return pwd_context.verify(plain_password, hashed_password)
+    return plain_password == hashed_password
+
+def get_user(db, username: str):
+    if username in db:
+        user_dict = db[username]
+        return UserInDB(**user_dict)
+
+def authenticate_user(fake_db, username: str, password: str):
+    user = get_user(fake_db, username)
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user
+
 @app.post("/init/rnr/")
 async def post_init_rnr( init_rnr: InitRnR):
     # print(init_rnr)
     # return tuple(init_rnr)
-    arcpy.env.workspace = gdb_path
     # SQL = "parcel_id = '{}'".format(parcel_id.parcel_id)
     # ownerList, sapList, rnrList = [], [], []
-    rnrFC = "RnRComponents"
     rnrFields = ["parcel_id",
     "pay_cost_unit",
     "pay_cost_plot",
@@ -375,10 +401,7 @@ async def post_init_rnr( init_rnr: InitRnR):
 @app.post("/payment/rnr/")
 async def post_payment_rnr( payment_rnr: PaymentRnR):
     print(payment_rnr)
-
-    arcpy.env.workspace = gdb_path
     sap_list = payment_rnr.sap_list
-
     sap_attrib = {
         "Unique_Id" : payment_rnr.parcel_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
@@ -406,7 +429,7 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": sap_list[0].assignment,
-            "Text": "".format(create_tran_id(sap_pay_detail.compn_type, "pvt")),
+            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "pvt")),
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -414,28 +437,23 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
     result = send_request_sap(sap_attrib)
     if not result.isSuccess:
         return {"msg": "SAP system not valiate the payment"}
-
-    paymentHistoryFC = "OwnerPaymentHistory"
     paymentHistoryFields = ["parcel_id", "owner_id", "amount", "datetime", "compn_type", "WBS" ]
 
-    with arcpy.da.InsertCursor(paymentHistoryFC, paymentHistoryFields) as tbList:
+    with arcpy.da.InsertCursor(rnrPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_rnr.payment_detail:
             rowRecord = (payment_rnr.parcel_id, payment_rnr.owner_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS)
             tbList.insertRow(rowRecord)
         del tbList
     return {"msg": "Payment raised succefully"}
-    return {"msg": sap_attrib}
 
 @app.post("/payment/history/rnr/")
 async def get_payment_history( payment_history: PaymentHistory):
     print(payment_history)
-    arcpy.env.workspace = gdb_path
     expression = "parcel_id = '{}' AND owner_id = '{}'".format(payment_history.parcel_id, payment_history.owner_id)
     paymentHistory = {}
     totalComPaid = 0
-    ownerFC = "OwnerPaymentHistory"
     ownerFields = [ "amount", "compn_type"]
-    with arcpy.da.SearchCursor(ownerFC, ownerFields, expression) as cursor:
+    with arcpy.da.SearchCursor(rnrPaymentFC, ownerFields, expression) as cursor:
         for row in cursor:
             if row[1] in paymentHistory:
                 paymentHistory[row[1]] += row[0]
@@ -451,8 +469,6 @@ async def get_payment_history( payment_history: PaymentHistory):
 ## GOVT
 @app.post("/init/govt/")
 async def post_init_govt( init_govt: InitGovt):
-    arcpy.env.workspace = gdb_path
-    govtFC = "GovtComponents"
     govtFields = ["parcel_id", "pay_premium", "pay_lease_rent_an", "pay_assets", "pay_ench_gov_lnd",
                   "pay_ench_forest_lnd", "pay_premium_wbs", "pay_lease_rent_an_wbs", "pay_assets_wbs",
                   "pay_ench_gov_lnd_wbs", "pay_ench_forest_lnd_wbs", "lease_duedate"]
@@ -473,14 +489,11 @@ async def post_init_govt( init_govt: InitGovt):
 @app.post("/govt/")
 async def get_govt( parcel_id: ParcelId):
     print(parcel_id.parcel_id)
-    arcpy.env.workspace = gdb_path
     SQL = "parcel_id = '{}'".format(parcel_id.parcel_id)
     sapSQL = "project_id = '{}'".format(parcel_id.project_id)
     sapList, govtList = [], []
     paymentHistory = {}
     totalComPaid, totalComp = 0, 0
-    sapFC, govtFC, govtPaymentFC = "SAPInfo", "GovtComponents", "GovtPaymentHistory"
-
     sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","place_supply", "land_act" ]
     govtFields = ["parcel_id", "pay_premium", "pay_lease_rent_an", "pay_assets", "pay_ench_gov_lnd",
                   "pay_ench_forest_lnd", "pay_premium_wbs", "pay_lease_rent_an_wbs", "pay_assets_wbs",
@@ -550,10 +563,9 @@ async def get_govt( parcel_id: ParcelId):
 @app.post("/payment/govt/")
 async def post_payment_govt( payment_govt: PaymentGovt):
     print(payment_govt)
-    arcpy.env.workspace = gdb_path
-    sap_list = payment_rnr.sap_list
+    sap_list = payment_govt.sap_list
     sap_attrib = {
-        "Unique_Id" : payment_rnr.parcel_id,
+        "Unique_Id" : payment_govt.parcel_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -566,7 +578,7 @@ async def post_payment_govt( payment_govt: PaymentGovt):
     }
     i = 0
     items = []
-    for sap_pay_detail in payment_rnr.payment_detail:
+    for sap_pay_detail in payment_govt.payment_detail:
         i += 1
         items.append({
             "Amount": sap_pay_detail.amount,
@@ -579,7 +591,7 @@ async def post_payment_govt( payment_govt: PaymentGovt):
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": sap_list[0].assignment,
-            "Text": "".format(create_tran_id(sap_pay_detail.compn_type, "govt")),
+            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "govt")),
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -588,10 +600,9 @@ async def post_payment_govt( payment_govt: PaymentGovt):
     if not result.isSuccess:
         return {"msg": "SAP system not valiate the payment"}
 
-    paymentHistoryFC = "GovtPaymentHistory"
     paymentHistoryFields = ["parcel_id", "amount", "datetime", "compn_type", "WBS" ]
 
-    with arcpy.da.InsertCursor(paymentHistoryFC, paymentHistoryFields) as tbList:
+    with arcpy.da.InsertCursor(govtPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_govt.payment_detail:
             rowRecord = (payment_govt.parcel_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS)
             tbList.insertRow(rowRecord)
@@ -602,8 +613,6 @@ async def post_payment_govt( payment_govt: PaymentGovt):
 ## FOREST
 @app.post("/init/fra/")
 async def post_init_fra( init_fra: InitFra):
-    arcpy.env.workspace = gdb_path
-    fraFC = "FraComponents"
     fraFields = ["parcel_id", "pay_npv", "pay_safety_zn", "amt_wlmp", "amt_ca_scheme", "pay_gap_smc", "pay_tree_fel", "pay_npv_wbs", "pay_safety_zn_wbs", "amt_wlmp_wbs", "amt_ca_scheme_wbs", "pay_gap_smc_wbs", "pay_tree_fel_wbs",
      "land_compn_f", "assets_com_f", "tree_com_f", "land_compn_f_wbs", "assets_com_f_wbs", "tree_com_f_wbs"]
 
@@ -620,14 +629,11 @@ async def post_init_fra( init_fra: InitFra):
 @app.post("/fra/")
 async def get_fra( parcel_id: ParcelId):
     print(parcel_id.parcel_id)
-    arcpy.env.workspace = gdb_path
     SQL = "parcel_id = '{}'".format(parcel_id.parcel_id)
     sapSQL = "project_id = '{}'".format(parcel_id.project_id)
     sapList, fraList = [], []
     paymentHistory = {}
     totalComPaid, totalComp = 0, 0
-    sapFC, fraFC, fraPaymentFC = "SAPInfo", "FraComponents", "FraPaymentHistory"
-
     sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","place_supply", "land_act" ]
     fraFields = ["parcel_id", "pay_npv", "pay_safety_zn", "amt_wlmp", "amt_ca_scheme", "pay_gap_smc", "pay_tree_fel", "pay_npv_wbs", "pay_safety_zn_wbs", "amt_wlmp_wbs", "amt_ca_scheme_wbs", "pay_gap_smc_wbs", "pay_tree_fel_wbs",
      "land_compn_f", "assets_com_f", "tree_com_f", "land_compn_f_wbs", "assets_com_f_wbs", "tree_com_f_wbs"]
@@ -704,10 +710,9 @@ async def get_fra( parcel_id: ParcelId):
 @app.post("/payment/fra/")
 async def post_payment_fra( payment_fra: PaymentFra):
     print(payment_fra)
-    arcpy.env.workspace = gdb_path
-    sap_list = payment_rnr.sap_list
+    sap_list = payment_fra.sap_list
     sap_attrib = {
-        "Unique_Id" : payment_rnr.parcel_id,
+        "Unique_Id" : payment_fra.parcel_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -720,7 +725,7 @@ async def post_payment_fra( payment_fra: PaymentFra):
     }
     i = 0
     items = []
-    for sap_pay_detail in payment_rnr.payment_detail:
+    for sap_pay_detail in payment_fra.payment_detail:
         i += 1
         items.append({
             "Amount": sap_pay_detail.amount,
@@ -733,7 +738,7 @@ async def post_payment_fra( payment_fra: PaymentFra):
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": sap_list[0].assignment,
-            "Text": "".format(create_tran_id(sap_pay_detail.compn_type, "fra")),
+            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "fra")),
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -742,17 +747,14 @@ async def post_payment_fra( payment_fra: PaymentFra):
     if not result.isSuccess:
         return {"msg": "SAP system not valiate the payment"}
 
-    paymentHistoryFC = "FraPaymentHistory"
     paymentHistoryFields = ["parcel_id", "amount", "datetime", "compn_type", "WBS" ]
 
-    with arcpy.da.InsertCursor(paymentHistoryFC, paymentHistoryFields) as tbList:
+    with arcpy.da.InsertCursor(fraPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_fra.payment_detail:
             rowRecord = (payment_fra.parcel_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS)
             tbList.insertRow(rowRecord)
         del tbList
     return {"msg": "Payment raised succefully"}
-
-
 
 @app.post("/login")
 async def login_basic(auth: HTTPBasicCredentials = Depends(security),nitem: str = Body(embed=True)):
@@ -779,8 +781,6 @@ async def login_basic(auth: HTTPBasicCredentials = Depends(security),nitem: str 
 ## Response: [{ OwnerID, OwnerName, Percentage }]
 @app.post("/payment/sap/")
 async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), payment_upd: PaymentUpdate = Body(embed=True)):
-    arcpy.env.workspace = gdb_path
-
     if not auth:
         response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401, content="Incorrect email or password")
         # return response
@@ -793,12 +793,6 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         user = authenticate_user(users_db, auth.username, auth.password)
         if not user:
             raise HTTPException(status_code=400, detail="Incorrect email or password")
-
-        land_table = {
-            "pvt" : "OwnerPaymentHistory",
-            "govt": "FraPaymentHistory",
-            "fra" : "GovtPaymentHistory"
-        }
         parcel_id = payment_upd.Unique_Id
         [id, comp_type, land_type] = payment_upd.Text.split(";")
 
@@ -806,7 +800,7 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         paymentHistoryFields = ["drp_doc_no", "payment_doc_no", "payment_date"]
 
         with arcpy.da.InsertCursor(paymentHistoryFC, paymentHistoryFields) as tbList:
-            for pay_detail in payment_fra.payment_detail:
+            for pay_detail in payment_upd.payment_detail:
                 rowRecord = (payment_upd.drp_doc_no, payment_upd.payment_doc_no, payment_upd.payment_date)
                 tbList.insertRow(rowRecord)
             del tbList
@@ -815,3 +809,6 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
         # return response
         return {"msg": "401 unauthorize"}
+
+## SAP Integration Web App Builder
+# app.mount("/", StaticFiles(directory="ui", html=True), name="ui")
