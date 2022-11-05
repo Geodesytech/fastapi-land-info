@@ -32,6 +32,7 @@ app.add_middleware(
 output_path= r"C:\Stuff\DR-AKSHAY\SAP-Integration\DB\GDB"
 gdb_filename = "land_info.gdb"
 gdb_path = "{}\\{}".format(output_path, gdb_filename)
+arcpy.env.workspace = gdb_path
 
 sapFC = "SAPInfo"
 ownerFC = "OwnerInfo"
@@ -42,6 +43,7 @@ govtPaymentFC = "GovtPaymentHistory"
 fraFC = "FraComponents"
 fraPaymentFC = "FraPaymentHistory"
 land_table = {"pvt" : rnrPaymentFC, "govt": fraPaymentFC, "fra" : govtPaymentFC}
+sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","witholding_tax_code", "withholding_tax_type", "tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","land_act" ]
 
 users_db = {
     "adani_gisportal": {
@@ -80,6 +82,8 @@ class SAPInfo(BaseModel):
     company_code: str
     vendor: str
     sp_g_l: str
+    witholding_tax_code: str
+    withholding_tax_type: str
     tax_code: str
     business_place: str
     section_code: str
@@ -91,7 +95,6 @@ class SAPInfo(BaseModel):
     bank_partner_type: str
     doc_sub_category: str
     remark: str
-    place_supply: str
     land_act: str
 
 class ParcelId(BaseModel):
@@ -205,7 +208,6 @@ async def get_rnr( parcel_id: ParcelId):
     ownerList, sapList, rnrList, totalComp, totalComPaid = [], [], [], 0, 0
     paymentFields = [ "amount", "compn_type"]
     ownerFields = ["parcel_id", "owner_id", "owner_name", "percentage", "exception", "ex_fields"]
-    sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","place_supply", "land_act" ]
     rnrFields = ["parcel_id", "pay_cost_unit", "pay_cost_plot", "pay_cost_lieu", "grant_dis_fam", "grant_scst_fam", "tran_cost_fam",
                 "pay_cattle_sh", "grant_art_trader", "settle_allow", "fee_stamp_duty",
                 "pay_cost_unit_wbs", "pay_cost_plot_wbs", "pay_cost_lieu_wbs", "grant_dis_fam_wbs", "grant_scst_fam_wbs",
@@ -229,19 +231,20 @@ async def get_rnr( parcel_id: ParcelId):
                 "company_code": row[3],
                 "vendor": row[4],
                 "sp_g_l": row[5],
-                "tax_code": row[6],
-                "business_place": row[7],
-                "section_code": row[8],
-                "business_area": row[9],
-                "payment_ref": row[10],
-                "profit_center": row[11],
-                "assignment": row[12],
-                "text": row[13],
-                "bank_partner_type": row[14],
-                "doc_sub_category": row[15],
-                "remark": row[16],
-                "place_supply": row[17],
-                "land_act" : row[18],
+                "witholding_tax_code": row[6],
+                "withholding_tax_type": row[7],
+                "tax_code": row[8],
+                "business_place": row[9],
+                "section_code": row[10],
+                "business_area": row[11],
+                "payment_ref": row[12],
+                "profit_center": row[13],
+                "assignment": row[14],
+                "text": row[15],
+                "bank_partner_type": row[16],
+                "doc_sub_category": row[17],
+                "remark": row[18],
+                "land_act" : row[19]
             })
         del sapCursor
 
@@ -298,13 +301,14 @@ def send_request_sap(sap_attrib):
     auth=HTTPBasicAuth(USER, PASS)
 
 
-    response = requests.post(AP_PAY_URL,auth=auth, json=sap_attrib)
+    response = requests.post(SAP_PAY_URL,auth=auth, json=sap_attrib)
 
     print('Response Code : ' + str(response.status_code))
 
     if response.status_code == 200:
         print('Login Successfully: '+ response.text)
-    return response.text
+        return {"isSuccess": True}
+    return {"isSuccess": False}
 
 
 def verify_password(plain_password, hashed_password):
@@ -409,8 +413,8 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
         "Company_Code": sap_list[0].company_code,
         "Vendor": sap_list[0].vendor,
         "Sp_GL": sap_list[0].sp_g_l,
-        "Withholding_Tax_Type": "",
-        "Witholding_Tax_Code": "",
+        "Withholding_Tax_Type": sap_list[0].withholding_tax_type,
+        "Witholding_Tax_Code": sap_list[0].witholding_tax_code,
         "Document_Sub_Category": sap_list[0].doc_sub_category,
         "Remarks": sap_list[0].remark
     }
@@ -494,7 +498,6 @@ async def get_govt( parcel_id: ParcelId):
     sapList, govtList = [], []
     paymentHistory = {}
     totalComPaid, totalComp = 0, 0
-    sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","place_supply", "land_act" ]
     govtFields = ["parcel_id", "pay_premium", "pay_lease_rent_an", "pay_assets", "pay_ench_gov_lnd",
                   "pay_ench_forest_lnd", "pay_premium_wbs", "pay_lease_rent_an_wbs", "pay_assets_wbs",
                   "pay_ench_gov_lnd_wbs", "pay_ench_forest_lnd_wbs", "lease_duedate"]
@@ -510,19 +513,20 @@ async def get_govt( parcel_id: ParcelId):
                 "company_code": row[3],
                 "vendor": row[4],
                 "sp_g_l": row[5],
-                "tax_code": row[6],
-                "business_place": row[7],
-                "section_code": row[8],
-                "business_area": row[9],
-                "payment_ref": row[10],
-                "profit_center": row[11],
-                "assignment": row[12],
-                "text": row[13],
-                "bank_partner_type": row[14],
-                "doc_sub_category": row[15],
-                "remark": row[16],
-                "place_supply": row[17],
-                "land_act" : row[18],
+                "witholding_tax_code": row[6],
+                "withholding_tax_type": row[7],
+                "tax_code": row[8],
+                "business_place": row[9],
+                "section_code": row[10],
+                "business_area": row[11],
+                "payment_ref": row[12],
+                "profit_center": row[13],
+                "assignment": row[14],
+                "text": row[15],
+                "bank_partner_type": row[16],
+                "doc_sub_category": row[17],
+                "remark": row[18],
+                "land_act" : row[19]
             })
         del sapCursor
 
@@ -571,8 +575,8 @@ async def post_payment_govt( payment_govt: PaymentGovt):
         "Company_Code": sap_list[0].company_code,
         "Vendor": sap_list[0].vendor,
         "Sp_GL": sap_list[0].sp_g_l,
-        "Withholding_Tax_Type": "",
-        "Witholding_Tax_Code": "",
+        "Withholding_Tax_Type": sap_list[0].withholding_tax_type,
+        "Witholding_Tax_Code": sap_list[0].witholding_tax_code,
         "Document_Sub_Category": sap_list[0].doc_sub_category,
         "Remarks": sap_list[0].remark
     }
@@ -634,7 +638,6 @@ async def get_fra( parcel_id: ParcelId):
     sapList, fraList = [], []
     paymentHistory = {}
     totalComPaid, totalComp = 0, 0
-    sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","place_supply", "land_act" ]
     fraFields = ["parcel_id", "pay_npv", "pay_safety_zn", "amt_wlmp", "amt_ca_scheme", "pay_gap_smc", "pay_tree_fel", "pay_npv_wbs", "pay_safety_zn_wbs", "amt_wlmp_wbs", "amt_ca_scheme_wbs", "pay_gap_smc_wbs", "pay_tree_fel_wbs",
      "land_compn_f", "assets_com_f", "tree_com_f", "land_compn_f_wbs", "assets_com_f_wbs", "tree_com_f_wbs"]
     fraPaymentFields = [ "amount", "compn_type"]
@@ -649,19 +652,20 @@ async def get_fra( parcel_id: ParcelId):
                 "company_code": row[3],
                 "vendor": row[4],
                 "sp_g_l": row[5],
-                "tax_code": row[6],
-                "business_place": row[7],
-                "section_code": row[8],
-                "business_area": row[9],
-                "payment_ref": row[10],
-                "profit_center": row[11],
-                "assignment": row[12],
-                "text": row[13],
-                "bank_partner_type": row[14],
-                "doc_sub_category": row[15],
-                "remark": row[16],
-                "place_supply": row[17],
-                "land_act" : row[18],
+                "witholding_tax_code": row[6],
+                "withholding_tax_type": row[7],
+                "tax_code": row[8],
+                "business_place": row[9],
+                "section_code": row[10],
+                "business_area": row[11],
+                "payment_ref": row[12],
+                "profit_center": row[13],
+                "assignment": row[14],
+                "text": row[15],
+                "bank_partner_type": row[16],
+                "doc_sub_category": row[17],
+                "remark": row[18],
+                "land_act" : row[19]
             })
         del sapCursor
 
@@ -718,8 +722,8 @@ async def post_payment_fra( payment_fra: PaymentFra):
         "Company_Code": sap_list[0].company_code,
         "Vendor": sap_list[0].vendor,
         "Sp_GL": sap_list[0].sp_g_l,
-        "Withholding_Tax_Type": "",
-        "Witholding_Tax_Code": "",
+        "Withholding_Tax_Type": sap_list[0].withholding_tax_type,
+        "Witholding_Tax_Code": sap_list[0].witholding_tax_code,
         "Document_Sub_Category": sap_list[0].doc_sub_category,
         "Remarks": sap_list[0].remark
     }
