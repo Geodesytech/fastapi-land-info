@@ -621,7 +621,7 @@ async def post_payment_govt( payment_govt: PaymentGovt):
 
     with arcpy.da.InsertCursor(govtPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_govt.payment_detail:
-            rowRecord = (payment_govt.parcel_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS)
+            rowRecord = (payment_govt.parcel_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS, pay_id)
             tbList.insertRow(rowRecord)
         del tbList
     return {"msg": "Payment raised succefully"}
@@ -770,7 +770,7 @@ async def post_payment_fra( payment_fra: PaymentFra):
 
     with arcpy.da.InsertCursor(fraPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_fra.payment_detail:
-            rowRecord = (payment_fra.parcel_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS)
+            rowRecord = (payment_fra.parcel_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS, pay_id)
             tbList.insertRow(rowRecord)
         del tbList
     return {"msg": "Payment raised succefully"}
@@ -810,7 +810,7 @@ async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security), paymen
         if not user:
             raise HTTPException(status_code=400, detail="Incorrect email or password")
         unique_id = payment_ack.Unique_Id
-        # [comp_type, land_type, id] = payment_upd.Text.split(";")
+        # [comp_type, land_type, id] = payment_ack.Text.split(";")
         [land_type, id] = unique_id.split(";")
 
         paymentHistoryFC = land_table[land_type]
@@ -818,9 +818,9 @@ async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security), paymen
         paySQL = "payment_id = '{}'".format(unique_id)
 
         with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
-            for pay_detail in payment_upd.payment_detail:
-                row[0] = payment_upd.Dpr_Doc_No
-                cursor.updateRow(row)
+            for row in tbList:
+                row[0] = payment_ack.Dpr_Doc_No
+                tbList.updateRow(row)
             del tbList
         return {"msg": "Payment raised succefully"}
     except:
@@ -843,7 +843,7 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         user = authenticate_user(users_db, auth.username, auth.password)
         if not user:
             raise HTTPException(status_code=400, detail="Incorrect email or password")
-        unique_id = payment_ack.Unique_Id
+        unique_id = payment_upd.Unique_Id
         # [comp_type, land_type, id] = payment_upd.Text.split(";")
         [land_type, id] = unique_id.split(";")
 
@@ -852,10 +852,10 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         paySQL = "payment_id = '{}'".format(unique_id)
 
         with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
-            for pay_detail in payment_upd.payment_detail:
+            for row in tbList:
                 row[0] = payment_upd.Payment_Doc_No
                 row[1] = payment_upd.Payment_Date
-                cursor.updateRow(row)
+                tbList.updateRow(row)
             del tbList
         return {"msg": "Payment raised succefully"}
     except:
