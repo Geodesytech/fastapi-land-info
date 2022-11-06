@@ -416,8 +416,9 @@ async def post_init_rnr( init_rnr: InitRnR):
 async def post_payment_rnr( payment_rnr: PaymentRnR):
     unique_id = str(uuid.uuid4())[0:14]
     sap_list = payment_rnr.sap_list
+    pay_id = "p;{}".format(unique_id)
     sap_attrib = {
-        "Unique_Id" : "p;{}".format(unique_id),
+        "Unique_Id" : pay_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -451,11 +452,11 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
     result = send_request_sap(sap_attrib)
     if not result["isSuccess"]:
         return {"msg": "SAP system not valiate the payment"}
-    paymentHistoryFields = ["parcel_id", "owner_id", "amount", "datetime", "compn_type", "WBS" ]
+    paymentHistoryFields = ["parcel_id", "owner_id", "amount", "datetime", "compn_type", "WBS", "payment_id" ]
 
     with arcpy.da.InsertCursor(rnrPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_rnr.payment_detail:
-            rowRecord = (payment_rnr.parcel_id, payment_rnr.owner_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS)
+            rowRecord = (payment_rnr.parcel_id, payment_rnr.owner_id, pay_detail.amount, datetime.date.today(), pay_detail.compn_type, pay_detail.WBS, pay_id)
             tbList.insertRow(rowRecord)
         del tbList
     return {"msg": "Payment raised succefully"}
@@ -579,8 +580,9 @@ async def post_payment_govt( payment_govt: PaymentGovt):
     print(payment_govt)
     sap_list = payment_govt.sap_list
     unique_id = str(uuid.uuid4())[0:14]
+    pay_id = "g;{}".format(unique_id)
     sap_attrib = {
-        "Unique_Id" : "g;{}".format(unique_id),
+        "Unique_Id" : pay_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -615,7 +617,7 @@ async def post_payment_govt( payment_govt: PaymentGovt):
     if not result.isSuccess:
         return {"msg": "SAP system not valiate the payment"}
 
-    paymentHistoryFields = ["parcel_id", "amount", "datetime", "compn_type", "WBS" ]
+    paymentHistoryFields = ["parcel_id", "amount", "datetime", "compn_type", "WBS", "payment_id" ]
 
     with arcpy.da.InsertCursor(govtPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_govt.payment_detail:
@@ -727,8 +729,9 @@ async def post_payment_fra( payment_fra: PaymentFra):
     print(payment_fra)
     sap_list = payment_fra.sap_list
     unique_id = str(uuid.uuid4())[0:12]
+    pay_id = "f;{}".format(unique_id)
     sap_attrib = {
-        "Unique_Id" : "f;{}".format(unique_id),
+        "Unique_Id" : pay_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -763,7 +766,7 @@ async def post_payment_fra( payment_fra: PaymentFra):
     if not result.isSuccess:
         return {"msg": "SAP system not valiate the payment"}
 
-    paymentHistoryFields = ["parcel_id", "amount", "datetime", "compn_type", "WBS" ]
+    paymentHistoryFields = ["parcel_id", "amount", "datetime", "compn_type", "WBS", "payment_id" ]
 
     with arcpy.da.InsertCursor(fraPaymentFC, paymentHistoryFields) as tbList:
         for pay_detail in payment_fra.payment_detail:
