@@ -278,3 +278,6 @@ def create_sap_info():
                                 field_is_required=f_lst["field_is_required"])
 
 create_sap_info()
+
+
+https://uat.adaniportal.com:8082/RESTAdapter/arcgis/downpaymentrequest
