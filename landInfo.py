@@ -42,7 +42,7 @@ govtFC = "GovtComponents"
 govtPaymentFC = "GovtPaymentHistory"
 fraFC = "FraComponents"
 fraPaymentFC = "FraPaymentHistory"
-land_table = {"pvt" : rnrPaymentFC, "govt": fraPaymentFC, "fra" : govtPaymentFC}
+land_table = {"p" : rnrPaymentFC, "g": fraPaymentFC, "f" : govtPaymentFC}
 sapFields = ["project_id", "check_list", "fiscal_year","company_code", "vendor", "sp_g_l","witholding_tax_code", "withholding_tax_type", "tax_code", "business_place", "section_code", "business_area", "payment_ref","profit_center", "assignment", "text", "bank_partner_type", "doc_sub_category", "remark","land_act" ]
 
 users_db = {
@@ -67,6 +67,12 @@ class User(BaseModel):
 
 class UserInDB(User):
     hashed_password: str
+
+class PaymentAck(BaseModel):
+    drp_doc_no: str #DPR doc no.
+    payment_date: str #Payment date
+    Unique_Id: str
+    Text: str
 
 class PaymentUpdate(BaseModel):
     drp_doc_no: str #DPR doc no.
@@ -290,9 +296,9 @@ async def get_rnr( parcel_id: ParcelId):
     return {"ownerList": ownerList, "sapList": sapList, "rnrList": rnrList, "totalComp":totalComp, "totalComPaid": totalComPaid}
 
 def create_tran_id(compType: str, landType: str):
-    id = str(uuid.uuid4())[0:30]
-    parcel_id = "{};{};{}".format(id, compType, landType)
-    return parcel_id
+    id = uuid.uuid4()
+    parcel_id = "{};{};{}".format(compType, landType, id)
+    return str(parcel_id)[0:14]
 
 def send_request_sap(sap_attrib):
     PASS = os.getenv('PASS')
@@ -300,7 +306,11 @@ def send_request_sap(sap_attrib):
     SAP_PAY_URL = os.getenv('SAP_PAY_URL')
     auth=HTTPBasicAuth(USER, PASS)
 
-
+    print("==========================")
+    print(SAP_PAY_URL)
+    print("==========================")
+    print(sap_attrib)
+    print("==========================")
     response = requests.post(SAP_PAY_URL,auth=auth, json=sap_attrib)
 
     print('Response Code : ' + str(response.status_code))
@@ -404,10 +414,10 @@ async def post_init_rnr( init_rnr: InitRnR):
 
 @app.post("/payment/rnr/")
 async def post_payment_rnr( payment_rnr: PaymentRnR):
-    print(payment_rnr)
+    unique_id = str(uuid.uuid4())[0:14]
     sap_list = payment_rnr.sap_list
     sap_attrib = {
-        "Unique_Id" : payment_rnr.parcel_id,
+        "Unique_Id" : "p;{}".format(unique_id),
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -428,18 +438,18 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
             "Business_Place": sap_list[0].business_place,
             "Section_Code": sap_list[0].section_code,
             "Business_Area": sap_list[0].business_area,
-            "Due_On": datetime.date.today(),
+            "Due_On": str(datetime.date.today()).replace("-", ""),
             "Payment_Reference": sap_list[0].payment_ref,
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": sap_list[0].assignment,
-            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "pvt")),
+            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "p")),
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
 
     result = send_request_sap(sap_attrib)
-    if not result.isSuccess:
+    if not result["isSuccess"]:
         return {"msg": "SAP system not valiate the payment"}
     paymentHistoryFields = ["parcel_id", "owner_id", "amount", "datetime", "compn_type", "WBS" ]
 
@@ -568,8 +578,9 @@ async def get_govt( parcel_id: ParcelId):
 async def post_payment_govt( payment_govt: PaymentGovt):
     print(payment_govt)
     sap_list = payment_govt.sap_list
+    unique_id = str(uuid.uuid4())[0:14]
     sap_attrib = {
-        "Unique_Id" : payment_govt.parcel_id,
+        "Unique_Id" : "g;{}".format(unique_id),
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -595,7 +606,7 @@ async def post_payment_govt( payment_govt: PaymentGovt):
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": sap_list[0].assignment,
-            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "govt")),
+            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "g")),
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -715,8 +726,9 @@ async def get_fra( parcel_id: ParcelId):
 async def post_payment_fra( payment_fra: PaymentFra):
     print(payment_fra)
     sap_list = payment_fra.sap_list
+    unique_id = str(uuid.uuid4())[0:12]
     sap_attrib = {
-        "Unique_Id" : payment_fra.parcel_id,
+        "Unique_Id" : "f;{}".format(unique_id),
         "Checklist_Doc_Type": sap_list[0].check_list,
         "Fiscal_Year": sap_list[0].fiscal_year,
         "Company_Code": sap_list[0].company_code,
@@ -742,7 +754,7 @@ async def post_payment_fra( payment_fra: PaymentFra):
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": sap_list[0].assignment,
-            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "fra")),
+            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "f")),
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -783,6 +795,40 @@ async def login_basic(auth: HTTPBasicCredentials = Depends(security),nitem: str 
 ## POST API: Update the payment status from SAP..
 ## Params: parcel_id
 ## Response: [{ OwnerID, OwnerName, Percentage }]
+@app.post("/payment/sap/ack")
+async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security), payment_ack: PaymentAck = Body(embed=True)):
+    if not auth:
+        response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401, content="Incorrect email or password")
+        # return response
+        return {"msg": "401 unauthorize"}
+
+    try:
+        user = authenticate_user(users_db, auth.username, auth.password)
+        if not user:
+            raise HTTPException(status_code=400, detail="Incorrect email or password")
+        unique_id = payment_ack.Unique_Id
+        # [comp_type, land_type, id] = payment_upd.Text.split(";")
+        [land_type, id] = unique_id.split(";")
+
+        paymentHistoryFC = land_table[land_type]
+        paymentHistoryFields = ["dpr_doc_no"]
+        paySQL = "payment_id = '{}'".format(unique_id)
+
+        with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
+            for pay_detail in payment_upd.payment_detail:
+                row[0] = payment_upd.Dpr_Doc_No
+                cursor.updateRow(row)
+            del tbList
+        return {"msg": "Payment raised succefully"}
+    except:
+        response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
+        # return response
+        return {"msg": "401 unauthorize"}
+
+
+## POST API: Update the payment status from SAP..
+## Params: parcel_id
+## Response: [{ OwnerID, OwnerName, Percentage }]
 @app.post("/payment/sap/")
 async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), payment_upd: PaymentUpdate = Body(embed=True)):
     if not auth:
@@ -791,22 +837,22 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         return {"msg": "401 unauthorize"}
 
     try:
-        # print(auth)
-        # decoded = base64.b64decode(auth).decode("ascii")
-        # username, _, password = decoded.partition(":")
         user = authenticate_user(users_db, auth.username, auth.password)
         if not user:
             raise HTTPException(status_code=400, detail="Incorrect email or password")
-        parcel_id = payment_upd.Unique_Id
-        [id, comp_type, land_type] = payment_upd.Text.split(";")
+        unique_id = payment_ack.Unique_Id
+        # [comp_type, land_type, id] = payment_upd.Text.split(";")
+        [land_type, id] = unique_id.split(";")
 
         paymentHistoryFC = land_table[land_type]
-        paymentHistoryFields = ["drp_doc_no", "payment_doc_no", "payment_date"]
+        paymentHistoryFields = ["payment_doc_no", "payment_date"]
+        paySQL = "payment_id = '{}'".format(unique_id)
 
-        with arcpy.da.InsertCursor(paymentHistoryFC, paymentHistoryFields) as tbList:
+        with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
             for pay_detail in payment_upd.payment_detail:
-                rowRecord = (payment_upd.drp_doc_no, payment_upd.payment_doc_no, payment_upd.payment_date)
-                tbList.insertRow(rowRecord)
+                row[0] = payment_upd.Payment_Doc_No
+                row[1] = payment_upd.Payment_Date
+                cursor.updateRow(row)
             del tbList
         return {"msg": "Payment raised succefully"}
     except:
