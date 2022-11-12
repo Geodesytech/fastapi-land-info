@@ -311,10 +311,10 @@ def send_request_sap(sap_attrib):
     print("==========================")
     print(sap_attrib)
     print("==========================")
+    # return {"isSuccess": True}
     response = requests.post(SAP_PAY_URL,auth=auth, json=sap_attrib)
 
     print('Response Code : ' + str(response.status_code))
-
     if response.status_code == 202:
         print('Login Successfully: '+ response.text)
         return {"isSuccess": True}
@@ -444,7 +444,7 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
             "Assignment": "{}".format(create_tran_id(sap_pay_detail.compn_type, "p")),
-            "Text": sap_list[0].Text,
+            "Text": sap_list[0].text,
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
