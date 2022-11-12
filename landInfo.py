@@ -69,15 +69,15 @@ class UserInDB(User):
     hashed_password: str
 
 class PaymentAck(BaseModel):
-    drp_doc_no: str #DPR doc no.
-    payment_date: str #Payment date
+    Dpr_Doc_No: str #DPR doc no.
+    Payment_Date: str #Payment date
     Unique_Id: str
     Text: str
 
 class PaymentUpdate(BaseModel):
-    drp_doc_no: str #DPR doc no.
-    payment_doc_no: str #Payment doc no.
-    payment_date: str #Payment date
+    Dpr_Doc_No: str #DPR doc no.
+    Payment_Doc_No: str #Payment doc no.
+    Payment_Date: str #Payment date
     Unique_Id: str
     Text: str
 
@@ -296,9 +296,9 @@ async def get_rnr( parcel_id: ParcelId):
     return {"ownerList": ownerList, "sapList": sapList, "rnrList": rnrList, "totalComp":totalComp, "totalComPaid": totalComPaid}
 
 def create_tran_id(compType: str, landType: str):
-    id = uuid.uuid4()
-    parcel_id = "{};{};{}".format(compType, landType, id)
-    return str(parcel_id)[0:14]
+    id = str(uuid.uuid4()).replace("-", "")
+    parcel_id = "{}-{}-{}".format(compType, landType, id)
+    return str(parcel_id)[0:15]
 
 def send_request_sap(sap_attrib):
     PASS = os.getenv('PASS')
@@ -315,7 +315,7 @@ def send_request_sap(sap_attrib):
 
     print('Response Code : ' + str(response.status_code))
 
-    if response.status_code == 200:
+    if response.status_code == 202:
         print('Login Successfully: '+ response.text)
         return {"isSuccess": True}
     return {"isSuccess": False}
@@ -414,9 +414,9 @@ async def post_init_rnr( init_rnr: InitRnR):
 
 @app.post("/payment/rnr/")
 async def post_payment_rnr( payment_rnr: PaymentRnR):
-    unique_id = str(uuid.uuid4())[0:14]
+    # unique_id = "Adani-p-{}".format(str(uuid.uuid4()).replace("-", "")[:10])
     sap_list = payment_rnr.sap_list
-    pay_id = "p;{}".format(unique_id)
+    pay_id = "Adani-p-{}".format(str(uuid.uuid4()).replace("-", "")[:7])
     sap_attrib = {
         "Unique_Id" : pay_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
@@ -443,8 +443,8 @@ async def post_payment_rnr( payment_rnr: PaymentRnR):
             "Payment_Reference": sap_list[0].payment_ref,
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
-            "Assignment": sap_list[0].assignment,
-            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "p")),
+            "Assignment": "{}".format(create_tran_id(sap_pay_detail.compn_type, "p")),
+            "Text": sap_list[0].Text,
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -579,8 +579,8 @@ async def get_govt( parcel_id: ParcelId):
 async def post_payment_govt( payment_govt: PaymentGovt):
     print(payment_govt)
     sap_list = payment_govt.sap_list
-    unique_id = str(uuid.uuid4())[0:14]
-    pay_id = "g;{}".format(unique_id)
+    # unique_id = str(uuid.uuid4())[0:14]
+    pay_id = "Adani-g-{}".format(str(uuid.uuid4()).replace("-", "")[:7])
     sap_attrib = {
         "Unique_Id" : pay_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
@@ -607,8 +607,8 @@ async def post_payment_govt( payment_govt: PaymentGovt):
             "Payment_Reference": sap_list[0].payment_ref,
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
-            "Assignment": sap_list[0].assignment,
-            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "g")),
+            "Assignment": "{}".format(create_tran_id(sap_pay_detail.compn_type, "g")),
+            "Text": sap_list[0].Text,
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -728,8 +728,8 @@ async def get_fra( parcel_id: ParcelId):
 async def post_payment_fra( payment_fra: PaymentFra):
     print(payment_fra)
     sap_list = payment_fra.sap_list
-    unique_id = str(uuid.uuid4())[0:12]
-    pay_id = "f;{}".format(unique_id)
+    # unique_id = str(uuid.uuid4())[0:12]
+    pay_id = "Adani-f-{}".format(str(uuid.uuid4()).replace("-", "")[:7])
     sap_attrib = {
         "Unique_Id" : pay_id,
         "Checklist_Doc_Type": sap_list[0].check_list,
@@ -756,8 +756,8 @@ async def post_payment_fra( payment_fra: PaymentFra):
             "Payment_Reference": sap_list[0].payment_ref,
             "Profit_Center": sap_list[0].profit_center,
             "WBS_Element": sap_pay_detail.WBS,
-            "Assignment": sap_list[0].assignment,
-            "Text": "{}".format(create_tran_id(sap_pay_detail.compn_type, "f")),
+            "Assignment": "{}".format(create_tran_id(sap_pay_detail.compn_type, "f")),
+            "Text": sap_list[0].Text,
             "Bank_Partner_Type": sap_list[0].bank_partner_type
         })
     sap_attrib["Item"] = items
@@ -775,31 +775,21 @@ async def post_payment_fra( payment_fra: PaymentFra):
         del tbList
     return {"msg": "Payment raised succefully"}
 
-@app.post("/login")
-async def login_basic(auth: HTTPBasicCredentials = Depends(security),nitem: str = Body(embed=True)):
-    if not auth:
-        # return {"msg": "401 unauthorize"}
-        response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401, content="Incorrect email or password")
-        return response
-
-    try:
-        print(auth)
-        # decoded = base64.b64decode(auth).decode("ascii")
-        # username, _, password = decoded.partition(":")
-        user = authenticate_user(users_db, auth.username, auth.password)
-        if not user:
-            raise HTTPException(status_code=400, detail="Incorrect email or password")
-
-        return { "msg": "success"}
-    except:
-        response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
-        return response
 
 ## POST API: Update the payment status from SAP..
 ## Params: parcel_id
-## Response: [{ OwnerID, OwnerName, Percentage }]
+## Response:
+#  class PaymentAck(BaseModel):
+#     Dpr_Doc_No: str #DPR doc no.
+#     Payment_Date: str #Payment date
+#     Unique_Id: str
+#     Text: str
 @app.post("/payment/sap/ack")
-async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security), payment_ack: PaymentAck = Body(embed=True)):
+async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security),
+                            Dpr_Doc_No: str = Body(embed=True),
+                            Payment_Date: str = Body(embed=True),
+                            Unique_Id: str = Body(embed=True),
+                            Assignment: str = Body(embed=True)):
     if not auth:
         response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401, content="Incorrect email or password")
         # return response
@@ -816,7 +806,7 @@ async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security), paymen
         paymentHistoryFC = land_table[land_type]
         paymentHistoryFields = ["dpr_doc_no"]
         paySQL = "payment_id = '{}'".format(unique_id)
-
+        return {"msg": "success"}
         with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
             for row in tbList:
                 row[0] = payment_ack.Dpr_Doc_No
@@ -831,9 +821,16 @@ async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security), paymen
 
 ## POST API: Update the payment status from SAP..
 ## Params: parcel_id
-## Response: [{ OwnerID, OwnerName, Percentage }]
+## Response:
+
+
 @app.post("/payment/sap/")
-async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), payment_upd: PaymentUpdate = Body(embed=True)):
+async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security),
+                                Dpr_Doc_No: str = Body(embed=True),
+                                Payment_Doc_No: str = Body(embed=True),
+                                Payment_Date: str = Body(embed=True),
+                                Unique_Id: str = Body(embed=True),
+                                Assignment: str = Body(embed=True)):
     if not auth:
         response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401, content="Incorrect email or password")
         # return response
@@ -843,18 +840,18 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security), pay
         user = authenticate_user(users_db, auth.username, auth.password)
         if not user:
             raise HTTPException(status_code=400, detail="Incorrect email or password")
-        unique_id = payment_upd.Unique_Id
+        # unique_id = payment_upd.Unique_Id
         # [comp_type, land_type, id] = payment_upd.Text.split(";")
-        [land_type, id] = unique_id.split(";")
+        [land_type, id] = Unique_Id.split("-")
 
         paymentHistoryFC = land_table[land_type]
         paymentHistoryFields = ["payment_doc_no", "payment_date"]
-        paySQL = "payment_id = '{}'".format(unique_id)
+        paySQL = "payment_id = '{}'".format(Unique_Id)
 
         with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
             for row in tbList:
-                row[0] = payment_upd.Payment_Doc_No
-                row[1] = payment_upd.Payment_Date
+                row[0] = Payment_Doc_No
+                row[1] = Payment_Date
                 tbList.updateRow(row)
             del tbList
         return {"msg": "Payment raised succefully"}
