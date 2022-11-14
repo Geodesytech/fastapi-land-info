@@ -790,6 +790,7 @@ async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security),
                             Payment_Date: str = Body(embed=True),
                             Unique_Id: str = Body(embed=True),
                             Assignment: str = Body(embed=True)):
+    print(Payment_Date)
     if not auth:
         response = Response(headers={"WWW-Authenticate": "Basic"}, status_code=401, content="Incorrect email or password")
         # return response
@@ -799,17 +800,17 @@ async def payment_ack_SAP(auth: HTTPBasicCredentials = Depends(security),
         user = authenticate_user(users_db, auth.username, auth.password)
         if not user:
             raise HTTPException(status_code=400, detail="Incorrect email or password")
-        unique_id = payment_ack.Unique_Id
-        # [comp_type, land_type, id] = payment_ack.Text.split(";")
-        [land_type, id] = unique_id.split(";")
+        # unique_id = payment_ack.Unique_Id
+        [compType, landType, id] = Assignment.split("-")
+        # [land_type, id] = Unique_Id.split(";")
 
         paymentHistoryFC = land_table[land_type]
         paymentHistoryFields = ["dpr_doc_no"]
-        paySQL = "payment_id = '{}'".format(unique_id)
+        paySQL = "payment_id = '{}' AND compn_type = {}".format(Unique_Id, compType)
         return {"msg": "success"}
         with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
             for row in tbList:
-                row[0] = payment_ack.Dpr_Doc_No
+                row[0] = Dpr_Doc_No
                 tbList.updateRow(row)
             del tbList
         return {"msg": "Payment raised succefully"}
@@ -842,11 +843,12 @@ async def payment_status_SAP(auth: HTTPBasicCredentials = Depends(security),
             raise HTTPException(status_code=400, detail="Incorrect email or password")
         # unique_id = payment_upd.Unique_Id
         # [comp_type, land_type, id] = payment_upd.Text.split(";")
-        [land_type, id] = Unique_Id.split("-")
+        # [land_type, id] = Unique_Id.split("-")
+        [compType, landType, id] = Assignment.split("-")
 
-        paymentHistoryFC = land_table[land_type]
+        paymentHistoryFC = land_table[landType]
         paymentHistoryFields = ["payment_doc_no", "payment_date"]
-        paySQL = "payment_id = '{}'".format(Unique_Id)
+        paySQL = "payment_id = '{}' AND compn_type = {}".format(Unique_Id, compType)
 
         with arcpy.da.UpdateCursor(paymentHistoryFC, paymentHistoryFields, paySQL) as tbList:
             for row in tbList:
